@@ -17,7 +17,7 @@ def hash_to_uuid(text):
     hash_hex = hashlib.sha256(text.strip().lower().encode()).hexdigest()
     return str(uuid.UUID(hash_hex[:32]))
 
-# 🔥 This runs once to ensure the index exists
+# This runs once to ensure the index exists
 def ensure_hash_index():
     try:
         client.create_payload_index(
@@ -25,15 +25,15 @@ def ensure_hash_index():
             field_name="hash",
             field_schema=rest.PayloadSchemaType.KEYWORD
         )
-        print("✅ Index on 'hash' created.")
+        print(" Index on 'hash' created.")
     except Exception as e:
         if "already exists" in str(e):
             print("ℹ️ Index on 'hash' already exists.")
         else:
-            print("⚠️ Index creation failed:", e)
+            print(" Index creation failed:", e)
 
 def store_embedding(resume_text):
-    # 🛡️ Ensure index exists before querying
+    #  Ensure index exists before querying
     ensure_hash_index()
 
     point_id = hash_to_uuid(resume_text)
