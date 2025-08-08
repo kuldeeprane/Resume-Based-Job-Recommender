@@ -56,7 +56,7 @@ def store_embedding(resume_text):
     if existing:
         return False, point_id  # Already exists
 
-    # ✅ Use PointStruct instead of a raw dict
+    #  Use PointStruct instead of a raw dict
     point = PointStruct(
         id=point_id,
         vector=embedding.tolist(),

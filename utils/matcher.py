@@ -4,6 +4,8 @@ It uses cosine similarity to find the best matches based on the embeddings gener
 """
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics.pairwise import cosine_similarity
+
 
 def match_resume_to_jd(resume_embedding, jd_embeddings):
     """
@@ -17,29 +19,24 @@ def match_resume_to_jd(resume_embedding, jd_embeddings):
     matches.sort(key=lambda x: x[1], reverse=True)
     return matches
 
+def match_resume_to_jd_optimized(resume_embedding, jd_embeddings):
+    """
+    Efficiently matches a resume to jobs using a single matrix operation.
+    """
+    # 1. Extract all job embeddings into a single list.
+    # This prepares the data for a bulk calculation.
+    jd_embedding_matrix = [jd["embedding"] for jd in jd_embeddings]
 
-# def match_resume_to_jd(resume_embedding, jd_embeddings):
-#     matches = []
+    # 2. Calculate all similarity scores in one go.
+    # This is much faster than looping. The result is a 2D array like [[s1, s2, s3, ...]].
+    all_scores = cosine_similarity([resume_embedding], jd_embedding_matrix)
 
-#     if not jd_embeddings:
-#         print(" No job embeddings available.")
-#         return []
-
+    # 3. Pair the original job data with the calculated scores.
+    # all_scores[0] gets the actual list of scores.
+    matches = list(zip(jd_embeddings, all_scores[0]))
     
-#     # Ensure resume embedding is a 2D array: (1, 768)
-#     resume_embedding = np.array(resume_embedding).reshape(1, -1)
-
-#     print("Type of resume_embedding:", type(resume_embedding))
-#     print("Resume embedding shape:", np.array(resume_embedding).shape)  
-
-#     for jd in jd_embeddings:
-#         jd_vec = np.array(jd["embedding"]).reshape(1, -1)
-#         print("Type of jd['embedding']:", type(jd["embedding"]))
-#         print("JD embedding shape:", np.array(jd["embedding"]).shape)
-#         print("Type of jdvec:", type(jd_vec))
-#         print("JDvec shape:", np.array(jd_vec).shape)
-#         score = cosine_similarity(resume_embedding, jd_vec)[0][0]
-#         matches.append((jd, score))
+    # 4. Sort the matches by score in descending order.
+    matches.sort(key=lambda x: x[1], reverse=True)
     
-#     matches.sort(key=lambda x: x[1], reverse=True)
-#     return matches
+    return matches
+

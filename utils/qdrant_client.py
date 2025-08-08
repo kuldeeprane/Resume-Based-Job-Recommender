@@ -2,12 +2,18 @@ from qdrant_client import QdrantClient, models
 from qdrant_client.models import VectorParams, Distance
 import os
 from dotenv import load_dotenv
+import streamlit as st
 
 load_dotenv()
 # Local (embedded) Qdrant – NO DOCKER NEEDED
 client = QdrantClient(
     path="./local_qdrant",  # Saves db files in this folder
     prefer_grpc=True
+)
+
+client = QdrantClient(
+    url=st.secrets["QDRANT_URL"],
+    api_key=st.secrets["QDRANT_API_KEY"],
 )
 
 print(client.get_collections())

@@ -1,78 +1,67 @@
 import hashlib
 import pickle
 import pandas as pd
-import numpy as np
+import torch
 from tqdm import tqdm
-from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
 from qdrant_client.http.models import PointStruct, VectorParams, Distance
 
 # ---------------- Setup ----------------
 QDRANT_COLLECTION = "jds1"
-client = QdrantClient(
-    path="local_qdrant",  # Local disk-based DB
-    prefer_grpc=True
-)
-model = SentenceTransformer("all-mpnet-base-v2")
+PICKLE_FILE_PATH = "NoteBooks/job_embeddings.pkl" # <<< UPDATE THIS IF NEEDED
 
-# ✅ Hash generator
+# client = QdrantClient(
+#     path="local_qdrant",      # for local run
+#     prefer_grpc=True
+# )
+
+client = QdrantClient(
+    url="https://39956cec-f784-48b6-bb33-95fb804da005.eu-central-1-0.aws.cloud.qdrant.io", 
+    api_key="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJhY2Nlc3MiOiJtIn0.yn4xkHmrSJtmPVh4ketUXUHFP5JXs1EqDlvRUHi-uM0",       # for storing embeddings in online qdrant cluster
+    timeout=60
+)
+
+# Hash generator
 def hash_to_uuid(text: str):
     return hashlib.md5(text.encode()).hexdigest()
 
-# ✅ Ensure Qdrant collection exists
-def ensure_collection(vector_size: int = 768):
-    if not client.collection_exists(QDRANT_COLLECTION):
+# Ensure Qdrant collection exists
+def ensure_collection(vector_size: int):
+    # Check vector_size to handle potential empty data
+    if not vector_size:
+        raise ValueError("Cannot create collection, vector size is zero. Your data might be empty.")
+        
+    if not client.collection_exists(collection_name=QDRANT_COLLECTION):
         client.recreate_collection(
             collection_name=QDRANT_COLLECTION,
-            vectors_config=VectorParams(
-                size=vector_size,
-                distance=Distance.COSINE
-            )
+            vectors_config=VectorParams(size=vector_size, distance=Distance.COSINE)
         )
         print(f"-> Collection '{QDRANT_COLLECTION}' created.")
     else:
         print(f"-> Collection '{QDRANT_COLLECTION}' already exists.")
 
-#  Generate embeddings from CSV
-def generate_embeddings_from_csv(csv_path: str):
-    df = pd.read_csv(csv_path)
-    
-    required_cols = ['Title', 'job_description_clean', 'Required Skills']
-    for col in required_cols:
-        if col not in df.columns:
-            raise ValueError(f"Missing required column: {col}")
+# Function to store embeddings from a DataFrame into Qdrant
+def store_embeddings_in_qdrant(df: pd.DataFrame, batch_size=50):
+    # Determine vector size from the first embedding
+    vector_size = len(df.iloc[0]['embedding']) if not df.empty else 0
+    ensure_collection(vector_size=vector_size)
 
-    jd_embeddings = []
-    for _, row in df.iterrows():
-        combined_text = f"{row['Title']} {row['Required Skills']} {row['job_description_clean']}"
-        embedding = model.encode(combined_text)
-
-        jd_embeddings.append({
-            "title": row["Title"],
-            "description": row["job_description_clean"],
-            "skills": row["Required Skills"],
-            "embedding": embedding
-        })
-
-    return jd_embeddings
-
-#  Store embeddings in Qdrant
-def store_embeddings_in_qdrant(jd_embeddings: list, batch_size=100):
-    ensure_collection(vector_size=len(jd_embeddings[0]['embedding']))
-
-    for i in tqdm(range(0, len(jd_embeddings), batch_size), desc="Uploading to Qdrant"):
-        batch = jd_embeddings[i:i + batch_size]
+    for i in tqdm(range(0, len(df), batch_size), desc="Uploading to Qdrant"):
+        batch_df = df.iloc[i:i + batch_size]
         points = []
 
-        for item in batch:
-            text_hash = hash_to_uuid(item["title"] +item["skills"]+ item["description"])
+        for _, row in batch_df.iterrows():
+            text_hash = hash_to_uuid(row["combined_text"])
+            
             point = PointStruct(
                 id=text_hash,
-                vector=item["embedding"].tolist(),
+                vector=row["embedding"].tolist(),
                 payload={
-                    "title": item["title"],
-                    "description": item["description"],
-                    "skills": item["skills"],
+                    "title": row["title"],
+                    "description": row["description"],
+                    "skills": row["skills"],
+                    "jdUrl": row.get("jdUrl", ""),  # Safely get jdUrl, default to empty
+                    "fjd": row.get("formatjd"),
                     "hash": text_hash
                 }
             )
@@ -81,21 +70,33 @@ def store_embeddings_in_qdrant(jd_embeddings: list, batch_size=100):
         if points:
             client.upsert(
                 collection_name=QDRANT_COLLECTION,
-                points=points
+                points=points,
+                wait=False
             )
 
     print("-> All embeddings stored in Qdrant.")
 
-#  MAIN
+# MAIN
 if __name__ == "__main__":
-    use_csv = False  # Change to False if you want to load from pickle
-    if use_csv:
-        csv_path = "./jobs.csvpath"  # Update this with your actual CSV file
-        print(f"-> Reading jobs from CSV: {csv_path}")
-        jd_embeddings = generate_embeddings_from_csv(csv_path)
-    else:
-        print("-> Loading precomputed embeddings from pickle")
-        with open("NoteBooks/demo_embeddings.pkl", "rb") as f:
-            jd_embeddings = pickle.load(f)
+    # 1. Load the pre-computed embeddings from your pickle file
+    print(f"-> Loading precomputed embeddings from: {PICKLE_FILE_PATH}")
+    with open(PICKLE_FILE_PATH, "rb") as f:
+        jd_embeddings_from_pickle = pickle.load(f)
 
-    store_embeddings_in_qdrant(jd_embeddings)
+    # 2. Convert the list of dictionaries into a pandas DataFrame
+    print("-> Converting loaded data to DataFrame...")
+    jobs_df = pd.DataFrame(jd_embeddings_from_pickle)
+
+    if not jobs_df.empty:
+        # 3. Prepare DataFrame for upload by creating the 'combined_text' field
+        # This is needed to generate a consistent hash for the Qdrant Point ID.
+        jobs_df['combined_text'] = (
+            jobs_df['title'].fillna('') + ' ' +
+            jobs_df['skills'].fillna('') + ' ' +
+            jobs_df['description'].fillna('')
+        )
+        
+        # 4. Call the function to store the data in Qdrant
+        store_embeddings_in_qdrant(jobs_df)
+    else:
+        print("-> The pickle file is empty or contains no data. Nothing to do.")
