@@ -1,6 +1,5 @@
 from qdrant_client import QdrantClient, models
 from qdrant_client.models import VectorParams, Distance
-import os
 from dotenv import load_dotenv
 import streamlit as st
 

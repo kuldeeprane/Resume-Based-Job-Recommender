@@ -2,7 +2,7 @@ import streamlit as st
 import os
 import tempfile
 from sentence_transformers import SentenceTransformer
-from qdrant_client import QdrantClient
+
 
 # --- Assume your utility functions are in their respective files ---
 from utils.parser import extract_text_from_pdf

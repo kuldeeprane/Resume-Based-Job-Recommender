@@ -3,7 +3,7 @@ import PyPDF2
 from pdf2image import convert_from_path
 import pytesseract
 from PIL import Image
-import tempfile
+
 
 def extract_text_from_pdf(file_path):
     text = ""

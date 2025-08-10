@@ -1,6 +1,22 @@
-streamlit
-pandas
-qdrant-client
+
+# Core ML and NLP
 sentence-transformers
+keybert
 torch
-torchvision
+scikit-learn
+numpy
+pandas
+
+# Web Framework
+streamlit
+
+# Database Connector
+qdrant-client
+
+# PDF and OCR Processing
+PyPDF2
+pdf2image
+pytesseract
+
+# Environment Variables
+python-dotenv
